@@ -17,11 +17,11 @@
 
 ## 📱 ¿Cómo descargo la aplicación?
 
-¡No necesitas saber programar ni tener herramientas instaladas! Gracias a la magia de **GitHub Actions**, cada vez que se actualiza el código, se genera la app lista para usar.
+¡No necesitas saber programar ni tener herramientas instaladas! 
 
-1. Ve a la pestaña de [**Actions**](../../actions) en la parte superior de esta página de GitHub.
-2. Haz clic en la última actualización que tenga un ✅ verde.
-3. Baja hasta abajo del todo a la sección **Artifacts** y descarga el archivo que se llama `usblocal-apk`.
+1. Ve a la sección de [**Releases**](../../releases) (Lanzamientos) en la parte derecha de la página principal de GitHub.
+2. Haz clic en la última versión publicada (ej. v1.0).
+3. En el apartado **Assets**, descarga el archivo `.apk`.
 4. Pásalo a tu móvil Android, ábrelo (te pedirá permiso para instalar apps desconocidas) ¡e instálalo!
 
 ---
