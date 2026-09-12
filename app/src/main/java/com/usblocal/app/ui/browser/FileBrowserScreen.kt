@@ -542,38 +542,24 @@ fun FileBrowserScreen(
 
 @Composable
 fun StorageBar(freeBytes: Long, totalBytes: Long) {
-    val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
-    val progress = if (totalBytes > 0) (usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
-    
     androidx.compose.material3.Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Ocupado: ${com.usblocal.app.util.FileUtils.formatFileSize(usedBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Total: ${com.usblocal.app.util.FileUtils.formatFileSize(totalBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Espacio libre: ${com.usblocal.app.util.FileUtils.formatFileSize(freeBytes)}",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-            )
             // Error explanation if router reports 0 free space
             if (freeBytes == 0L) {
                 Text(

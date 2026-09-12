@@ -104,9 +104,11 @@ class FileBrowserViewModel @Inject constructor(
 
                     // Fetch storage info asynchronously without blocking UI
                     viewModelScope.launch {
-                        val storageResult = fileRepository.getStorageInfo(connection)
-                        storageResult.onSuccess { info ->
-                            _state.update { state -> state.copy(storageInfo = info) }
+                        connection?.let { conn ->
+                            val storageResult = fileRepository.getStorageInfo(conn, path)
+                            storageResult.onSuccess { info ->
+                                _state.update { state -> state.copy(storageInfo = info) }
+                            }
                         }
                     }
                 },

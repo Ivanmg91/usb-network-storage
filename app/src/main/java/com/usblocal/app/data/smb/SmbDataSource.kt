@@ -46,7 +46,7 @@ interface SmbDataSource {
     ): Result<Unit>
 
     /** Retrieve free and total space in bytes */
-    suspend fun getStorageInfo(connection: SmbConnection): Result<Pair<Long, Long>>
+    suspend fun getStorageInfo(connection: SmbConnection, path: String): Result<Pair<Long, Long>>
 
     /** Close all active connections and clean up */
     fun closeAll()

@@ -255,15 +255,12 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
         }
     }
 
-    override suspend fun getStorageInfo(connection: SmbConnection): Result<Pair<Long, Long>> = withContext(Dispatchers.IO) {
+    override suspend fun getStorageInfo(connection: SmbConnection, path: String): Result<Pair<Long, Long>> = withContext(Dispatchers.IO) {
         runCatchingSmbOp {
-            val uri = buildUri(connection, "", true)
+            val uri = buildUri(connection, path, true)
             val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
             val free = smbFile.diskFreeSpace
-            // Asumimos un total de ~30GB si no podemos recuperar el tamaño total real
-            // porque SMB1 no siempre expone la capacidad total de forma fiable
-            val total = 32_212_254_720L 
-            Pair(free, total)
+            Pair(free, 0L)
         }
     }
 
