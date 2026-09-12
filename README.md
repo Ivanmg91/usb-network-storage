@@ -1,104 +1,67 @@
-# USBLocal — Gestor de Archivos SMB para Android
+<div align="center">
+  <h1>USBLocal 📁🚀</h1>
+  <p><strong>El gestor de archivos definitivo para el USB de tu router</strong></p>
+</div>
 
-Aplicación Android nativa para acceder al almacenamiento USB conectado a un router mediante SMB/Samba.
+¡Bienvenido a **USBLocal**! Esta aplicación Android nativa está diseñada para hacerte la vida más fácil. Si tienes un pendrive o disco duro conectado al router de tu casa y quieres acceder a tus películas, fotos y documentos desde el móvil sin cables, ¡esta es tu app!
 
-## Requisitos
+## ✨ Características principales
 
-- **Android Studio** Ladybug (2024.2) o superior
-- **JDK 17**
-- **Dispositivo Android** con API 26+ (Android 8.0+)
-- **Router** con almacenamiento USB y Samba/SMB activado
-- El dispositivo debe estar **conectado a la misma red Wi-Fi** que el router
+- 📡 **Conexión universal**: Compatible con routers modernos y antiguos (soporta desde el clásico **SMB1** hasta **SMB2/SMB3**).
+- 🎬 **Visualizador integrado**: Abre fotos, textos y vídeos directamente desde el router.
+- ⚡ **Subidas y Descargas rápidas**: Pasa archivos de tu móvil al pendrive (o viceversa) con un solo toque y viendo el progreso.
+- 📊 **Control de espacio**: Te muestra en tiempo real cuánto espacio libre te queda en el USB (ideal si lo formateas en FAT32 o NTFS).
+- 🔐 **Seguro y Privado**: Tus contraseñas se guardan encriptadas en tu propio móvil.
 
-## Compilar e instalar
+---
 
-### Desde Android Studio
+## 📱 ¿Cómo descargo la aplicación?
 
-1. Abre la carpeta del proyecto en Android Studio
-2. Espera a que Gradle sincronice las dependencias
-3. Conecta tu dispositivo Android por USB (o usa un emulador)
-4. Haz clic en **Run** ▶️ o `Shift+F10`
+¡No necesitas saber programar ni tener herramientas instaladas! Gracias a la magia de **GitHub Actions**, cada vez que se actualiza el código, se genera la app lista para usar.
 
-### Desde terminal
+1. Ve a la pestaña de [**Actions**](../../actions) en la parte superior de esta página de GitHub.
+2. Haz clic en la última actualización que tenga un ✅ verde.
+3. Baja hasta abajo del todo a la sección **Artifacts** y descarga el archivo que se llama `usblocal-apk`.
+4. Pásalo a tu móvil Android, ábrelo (te pedirá permiso para instalar apps desconocidas) ¡e instálalo!
 
-```bash
-# En la raíz del proyecto
-./gradlew assembleDebug
+---
 
-# Instalar en dispositivo conectado
-./gradlew installDebug
-```
+## 🛠️ ¿Cómo conecto mi USB?
 
-El APK se genera en: `app/build/outputs/apk/debug/app-debug.apk`
+Es súper fácil, solo necesitas estar conectado al Wi-Fi de tu casa:
 
-## Configurar una conexión SMB
+1. Abre la app **USBLocal** en tu móvil.
+2. Pulsa el botón **+** abajo a la derecha.
+3. Rellena los datos de tu router:
+   - **Dirección IP**: Casi siempre es `192.168.1.1` o `192.168.0.1`
+   - **Recurso compartido**: Si no sabes cómo se llama tu pendrive, ¡déjalo en blanco! La app te mostrará luego las carpetas automáticamente.
+   - **Usuario/Contraseña**: Si tu router no te pide clave para acceder al USB, marca la casilla **Acceso anónimo**.
+4. ¡Dale a **Probar Conexión**! La app revisará paso a paso que todo funcione correctamente.
+5. Si salen los ticks verdes ✅, dale a **Guardar**.
 
-1. Abre la app **USBLocal**
-2. Pulsa **+** para añadir un servidor
-3. Rellena los campos:
-   - **Dirección IP**: la IP de tu router (ej: `192.168.1.1`)
-   - **Recurso compartido**: el nombre del USB (ej: `USB`, `sda1`, `storage`)
-   - **Usuario/Contraseña**: las credenciales SMB de tu router
-   - Activa **Acceso anónimo** si tu router no requiere credenciales
-4. Pulsa **Probar conexión** para verificar paso a paso
-5. Si todo es correcto, pulsa **Guardar**
-6. Pulsa sobre la conexión para abrir el explorador de archivos
+> 💡 **Tip de uso:** Para subir un archivo al pendrive, recuerda primero pulsar en la carpeta (por ejemplo `usb1_1_1`) para entrar en él. ¡En la pantalla principal no hay espacio libre porque es solo el índice del router!
 
-## ¿Cómo encontrar los datos de conexión?
+---
 
-### IP del router
-- Normalmente `192.168.1.1` o `192.168.0.1`
-- En Android: Ajustes → Wi-Fi → tu red → Gateway
+## 💻 Para Desarrolladores (Geeks)
 
-### Nombre del recurso compartido
-- Accede al panel de administración del router
-- Busca la sección **USB / Storage / Samba**
-- El nombre del recurso compartido suele ser `USB`, `sda1`, o un nombre personalizado
-
-### Credenciales
-- Algunos routers usan las mismas credenciales del panel de administración
-- Otros tienen usuarios SMB específicos
-- Si el acceso es público, activa **Acceso anónimo**
-
-## Tecnología
+Si quieres trastear con el código de la app, el código está limpísimo y utiliza lo último de Android:
 
 | Componente | Tecnología |
 |---|---|
 | Lenguaje | Kotlin 2.0 |
-| UI | Jetpack Compose + Material 3 |
-| SMB | smbj 0.13.0 (SMB2/SMB3) |
-| Arquitectura | MVVM |
-| DI | Hilt |
+| Interfaz (UI) | Jetpack Compose + Material 3 |
+| Protocolo de Red | jcifs-ng (Soporte total SMB1/SMB2/SMB3) |
+| Arquitectura | MVVM + Corrutinas de Kotlin |
+| Inyección (DI) | Hilt |
 | Seguridad | EncryptedSharedPreferences |
 
-## Compatibilidad SMB
-
-- ✅ **SMB2** — soportado completamente
-- ✅ **SMB3** — soportado completamente
-- ❌ **SMB1** — no soportado por seguridad
-
-> **Nota**: Los routers muy antiguos que solo soporten SMB1 no serán compatibles.
-> La mayoría de routers fabricados después de 2015 soportan SMB2 como mínimo.
-
-## Estructura del proyecto
-
+### Compilar desde consola
+Si prefieres generar el APK en tu propio ordenador:
+```bash
+./gradlew assembleDebug
 ```
-app/src/main/java/com/usblocal/app/
-├── data/
-│   ├── model/          # Modelos de datos (SmbConnection, SmbFile, SmbError)
-│   ├── smb/            # SmbDataSource (interfaz) + SmbDataSourceImpl (smbj)
-│   ├── repository/     # ConnectionRepository, FileRepository
-│   └── storage/        # SecureStorage (EncryptedSharedPreferences)
-├── di/                 # Módulo Hilt
-├── ui/
-│   ├── theme/          # Material 3 (colores, tipografía, tema)
-│   ├── navigation/     # NavGraph
-│   ├── connections/    # Pantalla de conexiones + formulario
-│   ├── browser/        # Explorador de archivos + componentes
-│   └── common/         # Componentes reutilizables
-└── util/               # FileUtils, NetworkUtils
-```
+El APK se guardará en: `app/build/outputs/apk/debug/app-debug.apk`
 
-## Licencia
-
-Proyecto personal — uso privado.
+---
+*Hecho con ❤️ para que no tengas que estar pinchando y sacando el pendrive del router nunca más.*
