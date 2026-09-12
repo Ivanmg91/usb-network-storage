@@ -78,7 +78,12 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
 
     override suspend fun testConnection(connection: SmbConnection): Flow<ConnectionTestResult> = flow {
         var result = ConnectionTestResult()
-        val context = getContext(connection)
+        val context = try {
+            withContext(Dispatchers.IO) { getContext(connection) }
+        } catch (e: Throwable) {
+            result = result.copy(smbNegotiated = StepResult.Failed(SmbError.Unknown(Exception("Error de librería SMB: ${e.message}"))))
+            emit(result); return@flow
+        }
 
         // Step 1: Host + port reachable
         result = result.copy(hostReachable = StepResult.InProgress)
@@ -148,8 +153,8 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
                 shareAccessible = StepResult.Failed(error)
             )
             emit(result)
-        } catch (e: Exception) {
-            result = result.copy(smbNegotiated = StepResult.Failed(SmbError.NegotiationError()))
+        } catch (e: Throwable) {
+            result = result.copy(smbNegotiated = StepResult.Failed(SmbError.Unknown(Exception(e.message))))
             emit(result)
         }
     }
@@ -282,8 +287,8 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
             Result.failure(SmbException(SmbError.HostUnreachable("")))
         } catch (e: IOException) {
             Result.failure(SmbException(SmbError.ConnectionLost()))
-        } catch (e: Exception) {
-            Result.failure(SmbException(SmbError.Unknown(e)))
+        } catch (e: Throwable) {
+            Result.failure(SmbException(SmbError.Unknown(Exception(e.message))))
         }
     }
 
