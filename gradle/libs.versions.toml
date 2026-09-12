@@ -9,8 +9,7 @@ navigationCompose = "2.7.7"
 hiltNavigationCompose = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
 coil = "2.6.0"
-smbj = "0.13.0"
-bouncycastle = "1.70"
+jcifs = "2.1.10"
 coreKtx = "1.13.1"
 splashScreen = "1.0.1"
 activityCompose = "1.9.0"
@@ -51,8 +50,7 @@ androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navig
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
 # SMB
-smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
-bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk15on", version.ref = "bouncycastle" }
+jcifs-ng = { group = "eu.agno3.jcifs", name = "jcifs-ng", version.ref = "jcifs" }
 slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4j" }
 
 # Serialization

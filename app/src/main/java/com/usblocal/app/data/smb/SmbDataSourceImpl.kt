@@ -1,25 +1,16 @@
 package com.usblocal.app.data.smb
 
-import com.hierynomus.msdtyp.AccessMask
-import com.hierynomus.mserref.NtStatus
-import com.hierynomus.msfscc.FileAttributes
-import com.hierynomus.mssmb2.SMB2CreateDisposition
-import com.hierynomus.mssmb2.SMB2CreateOptions
-import com.hierynomus.mssmb2.SMB2ShareAccess
-import com.hierynomus.mssmb2.SMBApiException
-import com.hierynomus.protocol.transport.TransportException
-import com.hierynomus.smbj.SMBClient
-import com.hierynomus.smbj.SmbConfig
-import com.hierynomus.smbj.auth.AuthenticationContext
-import com.hierynomus.smbj.connection.Connection
-import com.hierynomus.smbj.session.Session
-import com.hierynomus.smbj.share.DiskShare
-import com.hierynomus.smbj.share.File as SmbFile2
 import com.usblocal.app.data.model.ConnectionTestResult
 import com.usblocal.app.data.model.SmbConnection
 import com.usblocal.app.data.model.SmbError
 import com.usblocal.app.data.model.SmbFile
 import com.usblocal.app.data.model.StepResult
+import jcifs.CIFSContext
+import jcifs.config.PropertyConfiguration
+import jcifs.context.BaseContext
+import jcifs.smb.NtlmPasswordAuthenticator
+import jcifs.smb.SmbException as JcifsSmbException
+import jcifs.smb.SmbAuthException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -30,36 +21,65 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.UnknownHostException
-import java.util.EnumSet
+import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
 
-    private val smbConfig: SmbConfig = SmbConfig.builder()
-        .withTimeout(30, TimeUnit.SECONDS)
-        .withSoTimeout(30, TimeUnit.SECONDS)
-        .withMultiProtocolNegotiate(true)
-        .build()
+    private val baseContext: CIFSContext
 
-    private val client: SMBClient = SMBClient(smbConfig)
+    init {
+        val prop = Properties()
+        // Habilitar SMB1 y SMB2/3 para máxima compatibilidad con routers antiguos y modernos
+        prop.setProperty("jcifs.smb.client.enableSMB2", "true")
+        prop.setProperty("jcifs.smb.client.disableSMB1", "false")
+        prop.setProperty("jcifs.resolveOrder", "DNS")
+        val config = PropertyConfiguration(prop)
+        baseContext = BaseContext(config)
+    }
 
-    private data class ShareKey(val connectionId: String)
-    private data class ShareSession(
-        val connection: Connection,
-        val session: Session,
-        val share: DiskShare
-    )
+    private val contextCache = ConcurrentHashMap<String, CIFSContext>()
 
-    private val activeShares = ConcurrentHashMap<ShareKey, ShareSession>()
+    private fun getContext(connection: SmbConnection): CIFSContext {
+        return contextCache.getOrPut(connection.id) {
+            val auth = if (connection.isGuest) {
+                NtlmPasswordAuthenticator("", "GUEST", "")
+            } else {
+                NtlmPasswordAuthenticator(
+                    connection.domain.ifEmpty { null },
+                    connection.username,
+                    connection.password
+                )
+            }
+            baseContext.withCredentials(auth)
+        }
+    }
+
+    private fun buildUri(connection: SmbConnection, path: String, isDirectory: Boolean): String {
+        val normalizedPath = path.replace('\\', '/').trim('/')
+        val shareName = connection.shareName.trim('/')
+        
+        val uri = StringBuilder("smb://${connection.host}/")
+        if (shareName.isNotEmpty()) {
+            uri.append(shareName).append("/")
+        }
+        if (normalizedPath.isNotEmpty()) {
+            uri.append(normalizedPath)
+            if (isDirectory) {
+                uri.append("/")
+            }
+        }
+        return uri.toString()
+    }
 
     // ==================== Test Connection ====================
 
     override suspend fun testConnection(connection: SmbConnection): Flow<ConnectionTestResult> = flow {
         var result = ConnectionTestResult()
+        val context = getContext(connection)
 
         // Step 1: Host + port reachable
         result = result.copy(hostReachable = StepResult.InProgress)
@@ -88,63 +108,51 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
             emit(result); return@flow
         }
 
-        // Step 3: SMB negotiation
+        // Step 2, 3, 4, 5 combined in jcifs (it negotiates and authenticates lazily when opening)
         result = result.copy(smbNegotiated = StepResult.InProgress)
         emit(result)
-        val conn: Connection
+        
         try {
-            conn = withContext(Dispatchers.IO) { client.connect(connection.host, connection.port) }
-            result = result.copy(smbNegotiated = StepResult.Success)
+            val shareUri = buildUri(connection, "", true)
+            val smbFile = withContext(Dispatchers.IO) { jcifs.smb.SmbFile(shareUri, context) }
+            
+            // Trigger connection/auth by checking existence
+            withContext(Dispatchers.IO) { smbFile.exists() }
+            
+            result = result.copy(
+                smbNegotiated = StepResult.Success,
+                authenticated = StepResult.Success,
+                shareAccessible = StepResult.Success
+            )
+            emit(result)
+            
+            // Step 6: Can list
+            result = result.copy(canListFiles = StepResult.InProgress)
+            emit(result)
+            
+            withContext(Dispatchers.IO) { smbFile.listFiles() }
+            result = result.copy(canListFiles = StepResult.Success)
+            emit(result)
+
+        } catch (e: SmbAuthException) {
+            result = result.copy(
+                smbNegotiated = StepResult.Success,
+                authenticated = StepResult.Failed(SmbError.AuthenticationFailed())
+            )
+            emit(result)
+        } catch (e: JcifsSmbException) {
+            val error = mapJcifsError(e, connection.shareName)
+            // It could be negotiation, share not found, etc.
+            result = result.copy(
+                smbNegotiated = StepResult.Success, // We assume negotiation succeeded if it's an SmbException not related to transport
+                authenticated = StepResult.Success,
+                shareAccessible = StepResult.Failed(error)
+            )
             emit(result)
         } catch (e: Exception) {
             result = result.copy(smbNegotiated = StepResult.Failed(SmbError.NegotiationError()))
-            emit(result); return@flow
-        }
-
-        // Step 4: Authentication
-        result = result.copy(authenticated = StepResult.InProgress)
-        emit(result)
-        val session: Session
-        try {
-            session = withContext(Dispatchers.IO) { conn.authenticate(buildAuthContext(connection)) }
-            result = result.copy(authenticated = StepResult.Success)
-            emit(result)
-        } catch (e: SMBApiException) {
-            result = result.copy(authenticated = StepResult.Failed(mapSmbApiError(e)))
-            emit(result); safeClose(conn); return@flow
-        } catch (e: Exception) {
-            result = result.copy(authenticated = StepResult.Failed(SmbError.AuthenticationFailed()))
-            emit(result); safeClose(conn); return@flow
-        }
-
-        // Step 5: Share accessible
-        result = result.copy(shareAccessible = StepResult.InProgress)
-        emit(result)
-        val share: DiskShare
-        try {
-            share = withContext(Dispatchers.IO) { session.connectShare(connection.shareName) as DiskShare }
-            result = result.copy(shareAccessible = StepResult.Success)
-            emit(result)
-        } catch (e: SMBApiException) {
-            result = result.copy(shareAccessible = StepResult.Failed(mapSmbApiError(e, connection.shareName)))
-            emit(result); safeClose(conn); return@flow
-        } catch (e: Exception) {
-            result = result.copy(shareAccessible = StepResult.Failed(SmbError.ShareNotFound(connection.shareName)))
-            emit(result); safeClose(conn); return@flow
-        }
-
-        // Step 6: Can list
-        result = result.copy(canListFiles = StepResult.InProgress)
-        emit(result)
-        try {
-            withContext(Dispatchers.IO) { share.list("") }
-            result = result.copy(canListFiles = StepResult.Success)
-            emit(result)
-        } catch (e: Exception) {
-            result = result.copy(canListFiles = StepResult.Failed(SmbError.AccessDenied(connection.shareName)))
             emit(result)
         }
-        safeClose(share); safeClose(conn)
     }
 
     // ==================== File Operations ====================
@@ -152,68 +160,65 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
     override suspend fun listFiles(
         connection: SmbConnection, path: String
     ): Result<List<SmbFile>> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val smbPath = normalizePath(path)
-            share.list(smbPath)
-                .filter { it.fileName != "." && it.fileName != ".." }
-                .map { info ->
-                    val isDir = (info.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
-                    SmbFile.fromDirectoryInfo(
-                        fileName = info.fileName,
-                        parentPath = smbPath,
-                        isDirectory = isDir,
-                        fileSize = if (isDir) 0L else info.endOfFile,
-                        lastWriteTime = fileTimeToMillis(info.lastWriteTime?.windowsTimeStamp ?: 0L)
-                    )
-                }
-                .sortedWith(compareByDescending<SmbFile> { it.isDirectory }.thenBy { it.name.lowercase() })
+        runCatchingSmbOp {
+            val uri = buildUri(connection, path, true)
+            val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
+            
+            val children = smbFile.listFiles() ?: emptyArray()
+            
+            children.map { child ->
+                val isDir = child.isDirectory
+                val name = child.name.trimEnd('/')
+                val childPath = if (path.isEmpty()) name else "$path\\$name"
+                
+                SmbFile(
+                    name = name,
+                    path = childPath,
+                    isDirectory = isDir,
+                    size = if (isDir) 0L else child.length(),
+                    lastModified = child.lastModified()
+                )
+            }.sortedWith(compareByDescending<SmbFile> { it.isDirectory }.thenBy { it.name.lowercase() })
         }
     }
 
     override suspend fun createFolder(
         connection: SmbConnection, path: String, name: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val parent = normalizePath(path)
-            share.mkdir(if (parent.isEmpty()) name else "$parent\\$name")
+        runCatchingSmbOp {
+            val parentPath = if (path.isEmpty()) name else "$path\\$name"
+            val uri = buildUri(connection, parentPath, true)
+            val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
+            smbFile.mkdir()
         }
     }
 
     override suspend fun delete(
         connection: SmbConnection, path: String, isDirectory: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val smbPath = normalizePath(path)
-            if (isDirectory) share.rmdir(smbPath, true) else share.rm(smbPath)
+        runCatchingSmbOp {
+            val uri = buildUri(connection, path, isDirectory)
+            val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
+            smbFile.delete()
         }
     }
 
     override suspend fun rename(
         connection: SmbConnection, path: String, newName: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val smbPath = normalizePath(path)
-            val parentDir = smbPath.substringBeforeLast('\\', "")
+        runCatchingSmbOp {
+            val parentDir = path.substringBeforeLast('\\', "")
             val newPath = if (parentDir.isEmpty()) newName else "$parentDir\\$newName"
-
-            // Use DiskShare.open() with DELETE access to get a DiskEntry, then rename
-            val entry = share.open(
-                smbPath,
-                EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                null
-            )
-            try {
-                entry.rename(newPath)
-            } finally {
-                entry.close()
-            }
+            
+            // Jcifs requires knowing if it's a directory to append slash, 
+            // but we can try without slash for rename source and destination
+            val oldUri = buildUri(connection, path, false) 
+            val newUri = buildUri(connection, newPath, false)
+            
+            val oldFile = jcifs.smb.SmbFile(oldUri, getContext(connection))
+            val newFile = jcifs.smb.SmbFile(newUri, getContext(connection))
+            
+            oldFile.renameTo(newFile)
         }
     }
 
@@ -223,25 +228,13 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
         outputStream: OutputStream,
         onProgress: ((Long, Long) -> Unit)?
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val smbPath = normalizePath(remotePath)
-
-            val smbFile = share.open(
-                smbPath,
-                EnumSet.of(AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                null
-            ) as SmbFile2
-
-            try {
-                val totalSize = smbFile.fileInformation.standardInformation.endOfFile
-                val inStream = smbFile.inputStream
+        runCatchingSmbOp {
+            val uri = buildUri(connection, remotePath, false)
+            val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
+            
+            val totalSize = smbFile.length()
+            smbFile.inputStream.use { inStream ->
                 transferStream(inStream, outputStream, totalSize, onProgress)
-            } finally {
-                smbFile.close()
             }
         }
     }
@@ -253,100 +246,54 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
         totalSize: Long,
         onProgress: ((Long, Long) -> Unit)?
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatchingSmbOp(connection) {
-            val share = getOrCreateShare(connection)
-            val smbPath = normalizePath(remotePath)
-
-            val smbFile = share.open(
-                smbPath,
-                EnumSet.of(AccessMask.GENERIC_WRITE),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OVERWRITE_IF,
-                null
-            ) as SmbFile2
-
-            try {
-                val outStream = smbFile.outputStream
+        runCatchingSmbOp {
+            val uri = buildUri(connection, remotePath, false)
+            val smbFile = jcifs.smb.SmbFile(uri, getContext(connection))
+            
+            smbFile.outputStream.use { outStream ->
                 transferStream(inputStream, outStream, totalSize, onProgress)
-            } finally {
-                smbFile.close()
             }
         }
     }
 
     override fun closeAll() {
-        activeShares.values.forEach {
-            safeClose(it.share); safeClose(it.connection)
-        }
-        activeShares.clear()
+        contextCache.clear()
+        // jcifs-ng handles connection pooling internally via BaseContext
     }
 
     // ==================== Internals ====================
 
-    private fun getOrCreateShare(connection: SmbConnection): DiskShare {
-        val key = ShareKey(connection.id)
-        activeShares[key]?.let { cached ->
-            if (cached.connection.isConnected && cached.share.isConnected) return cached.share
-            safeClose(cached.share); safeClose(cached.connection)
-            activeShares.remove(key)
-        }
-        val conn = client.connect(connection.host, connection.port)
-        val session = conn.authenticate(buildAuthContext(connection))
-        val share = session.connectShare(connection.shareName) as DiskShare
-        activeShares[key] = ShareSession(conn, session, share)
-        return share
-    }
-
-    private fun invalidateShare(connection: SmbConnection) {
-        activeShares.remove(ShareKey(connection.id))?.let {
-            safeClose(it.share); safeClose(it.connection)
-        }
-    }
-
-    private fun buildAuthContext(conn: SmbConnection): AuthenticationContext =
-        if (conn.isGuest) AuthenticationContext.guest()
-        else AuthenticationContext(conn.username, conn.password.toCharArray(), conn.domain.ifBlank { null })
-
-    private inline fun <T> runCatchingSmbOp(connection: SmbConnection, block: () -> T): Result<T> {
+    private inline fun <T> runCatchingSmbOp(block: () -> T): Result<T> {
         return try {
             Result.success(block())
-        } catch (e: SMBApiException) {
-            invalidateShare(connection)
-            Result.failure(SmbException(mapSmbApiError(e)))
-        } catch (e: TransportException) {
-            invalidateShare(connection)
-            Result.failure(SmbException(SmbError.ConnectionLost()))
+        } catch (e: SmbAuthException) {
+            Result.failure(SmbException(SmbError.AuthenticationFailed()))
+        } catch (e: JcifsSmbException) {
+            Result.failure(SmbException(mapJcifsError(e)))
         } catch (e: UnknownHostException) {
-            invalidateShare(connection)
-            Result.failure(SmbException(SmbError.HostUnreachable(connection.host)))
+            Result.failure(SmbException(SmbError.HostUnreachable("")))
         } catch (e: IOException) {
-            invalidateShare(connection)
-            val error = when {
-                e.message?.contains("timeout", true) == true -> SmbError.Timeout()
-                e.message?.contains("refused", true) == true -> SmbError.PortInaccessible(connection.host, connection.port)
-                else -> SmbError.ConnectionLost()
-            }
-            Result.failure(SmbException(error))
+            Result.failure(SmbException(SmbError.ConnectionLost()))
         } catch (e: Exception) {
-            invalidateShare(connection)
             Result.failure(SmbException(SmbError.Unknown(e)))
         }
     }
 
-    private fun mapSmbApiError(e: SMBApiException, context: String = ""): SmbError = when (e.status) {
-        NtStatus.STATUS_LOGON_FAILURE -> SmbError.AuthenticationFailed()
-        NtStatus.STATUS_ACCESS_DENIED -> SmbError.AccessDenied(context)
-        NtStatus.STATUS_BAD_NETWORK_NAME -> SmbError.ShareNotFound(context)
-        NtStatus.STATUS_OBJECT_NAME_NOT_FOUND -> SmbError.FileNotFound(context)
-        NtStatus.STATUS_OBJECT_NAME_COLLISION -> SmbError.FileAlreadyExists(context)
-        NtStatus.STATUS_DISK_FULL -> SmbError.InsufficientStorage()
-        NtStatus.STATUS_NETWORK_NAME_DELETED -> SmbError.ConnectionLost()
-        else -> SmbError.Unknown(e)
+    private fun mapJcifsError(e: JcifsSmbException, context: String = ""): SmbError {
+        val ntStatus = e.ntStatus
+        return when (ntStatus) {
+            jcifs.smb.NtStatus.NT_STATUS_ACCESS_DENIED -> SmbError.AccessDenied(context)
+            jcifs.smb.NtStatus.NT_STATUS_BAD_NETWORK_NAME -> SmbError.ShareNotFound(context)
+            jcifs.smb.NtStatus.NT_STATUS_OBJECT_NAME_NOT_FOUND, 
+            jcifs.smb.NtStatus.NT_STATUS_NO_SUCH_FILE -> SmbError.FileNotFound(context)
+            jcifs.smb.NtStatus.NT_STATUS_OBJECT_NAME_COLLISION -> SmbError.FileAlreadyExists(context)
+            jcifs.smb.NtStatus.NT_STATUS_DISK_FULL -> SmbError.InsufficientStorage()
+            else -> SmbError.Unknown(e)
+        }
     }
 
     private fun transferStream(input: InputStream, output: OutputStream, total: Long, onProgress: ((Long, Long) -> Unit)?) {
-        val buf = ByteArray(BUFFER_SIZE)
+        val buf = ByteArray(65536)
         var transferred = 0L
         var n: Int
         while (input.read(buf).also { n = it } != -1) {
@@ -356,15 +303,6 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
         }
         output.flush()
     }
-
-    private fun normalizePath(path: String): String = path.replace('/', '\\').trimStart('\\')
-
-    private fun fileTimeToMillis(ts: Long): Long =
-        if (ts <= 0L) 0L else (ts / 10000) - 11644473600000L
-
-    private fun safeClose(c: AutoCloseable?) { try { c?.close() } catch (_: Exception) {} }
-
-    companion object { private const val BUFFER_SIZE = 65536 }
 }
 
 /** Wrapper exception carrying a typed [SmbError] */

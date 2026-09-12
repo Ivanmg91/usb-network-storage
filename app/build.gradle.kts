@@ -88,10 +88,8 @@ dependencies {
     // Security (encrypted credentials)
     implementation(libs.androidx.security.crypto)
 
-    // SMB Client
-    implementation(libs.smbj) {
-        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
-    }
+    // SMB Client (jcifs-ng)
+    implementation(libs.jcifs.ng)
     implementation(libs.slf4j.nop)
 
     // Serialization
