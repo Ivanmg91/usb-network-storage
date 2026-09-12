@@ -85,9 +85,7 @@ class AddEditConnectionViewModel @Inject constructor(
             errors["port"] = "Puerto no válido (1-65535)"
         }
 
-        if (conn.shareName.isBlank()) {
-            errors["shareName"] = "El nombre del recurso es obligatorio"
-        }
+        // El nombre del recurso ya no es obligatorio, si está vacío se listarán todos los recursos compartidos
 
         if (!conn.isGuest && conn.username.isBlank()) {
             errors["username"] = "El usuario es obligatorio (o activa acceso anónimo)"

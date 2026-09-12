@@ -262,6 +262,11 @@ fun FileBrowserScreen(
                 )
             )
         },
+        bottomBar = {
+            state.storageInfo?.let { (free, total) ->
+                StorageBar(freeBytes = free, totalBytes = total)
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(

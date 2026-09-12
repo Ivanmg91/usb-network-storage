@@ -101,6 +101,10 @@ class FileRepository @Inject constructor(
         return smbDataSource.downloadFile(connection, remotePath, outputStream, onProgress)
     }
 
+    suspend fun getStorageInfo(connection: SmbConnection): Result<Pair<Long, Long>> {
+        return smbDataSource.getStorageInfo(connection)
+    }
+
     suspend fun uploadFile(
         connection: SmbConnection,
         remotePath: String,

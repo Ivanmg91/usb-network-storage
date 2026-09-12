@@ -31,6 +31,8 @@ data class FileBrowserState(
     val error: String? = null,
     val pathHistory: List<String> = listOf(""),
     val sortOption: SortOption = SortOption.NAME_ASC,
+    val storageInfo: Pair<Long, Long>? = null,
+    val freeSpaceBytes: Long? = null,
 
     // Dialogs
     val showCreateFolderDialog: Boolean = false,
@@ -98,6 +100,14 @@ class FileBrowserViewModel @Inject constructor(
                             isLoading = false,
                             error = null
                         )
+                    }
+
+                    // Fetch storage info asynchronously without blocking UI
+                    viewModelScope.launch {
+                        val storageResult = fileRepository.getStorageInfo(connection)
+                        storageResult.onSuccess { info ->
+                            _state.update { state -> state.copy(storageInfo = info) }
+                        }
                     }
                 },
                 onFailure = { throwable ->

@@ -45,6 +45,9 @@ interface SmbDataSource {
         onProgress: ((bytesTransferred: Long, totalBytes: Long) -> Unit)? = null
     ): Result<Unit>
 
+    /** Retrieve free and total space in bytes */
+    suspend fun getStorageInfo(connection: SmbConnection): Result<Pair<Long, Long>>
+
     /** Close all active connections and clean up */
     fun closeAll()
 }
