@@ -72,10 +72,11 @@ fun MediaViewerScreen(
         ) {
             when {
                 state.error != null -> {
+                    val errorMsg = state.error
                     EmptyState(
                         icon = "⚠️",
                         title = "Error al abrir el archivo",
-                        subtitle = state.error,
+                        subtitle = errorMsg ?: "Error",
                         modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                     )
                 }

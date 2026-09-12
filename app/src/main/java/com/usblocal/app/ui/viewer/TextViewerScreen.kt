@@ -74,10 +74,11 @@ fun TextViewerScreen(
         ) {
             when {
                 state.error != null -> {
+                    val errorMsg = state.error
                     EmptyState(
                         icon = "⚠️",
                         title = "Error",
-                        subtitle = state.error
+                        subtitle = errorMsg ?: "Error desconocido"
                     )
                 }
 

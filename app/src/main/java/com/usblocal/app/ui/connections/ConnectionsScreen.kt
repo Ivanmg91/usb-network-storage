@@ -103,8 +103,7 @@ fun ConnectionsScreen(
                         connection = connection,
                         onClick = { onNavigateToBrowser(connection.id) },
                         onEdit = { onNavigateToEditConnection(connection.id) },
-                        onDelete = { connectionToDelete = connection },
-                        modifier = Modifier.animateItem()
+                        onDelete = { connectionToDelete = connection }
                     )
                 }
             }
