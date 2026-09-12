@@ -535,3 +535,50 @@ fun FileBrowserScreen(
         )
     }
 }
+
+@Composable
+fun StorageBar(freeBytes: Long, totalBytes: Long) {
+    val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
+    val progress = if (totalBytes > 0) (usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+    
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Ocupado: ${com.usblocal.app.util.FileUtils.formatFileSize(usedBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Total: ${com.usblocal.app.util.FileUtils.formatFileSize(totalBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+            )
+            // Error explanation if router reports 0 free space
+            if (freeBytes == 0L) {
+                Text(
+                    text = "⚠ El router reporta 0B libres. Las subidas fallarán.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    }
+}
