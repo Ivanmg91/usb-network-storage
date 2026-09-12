@@ -29,16 +29,15 @@ import javax.inject.Singleton
 @Singleton
 class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
 
-    private val baseContext: CIFSContext
-
-    init {
+    private val baseContext: CIFSContext by lazy {
         val prop = Properties()
         // Habilitar SMB1 y SMB2/3 para máxima compatibilidad con routers antiguos y modernos
         prop.setProperty("jcifs.smb.client.enableSMB2", "true")
         prop.setProperty("jcifs.smb.client.disableSMB1", "false")
         prop.setProperty("jcifs.resolveOrder", "DNS")
+        prop.setProperty("jcifs.smb.client.ipcSigningEnforced", "false") // Compatibility for older routers
         val config = PropertyConfiguration(prop)
-        baseContext = BaseContext(config)
+        BaseContext(config)
     }
 
     private val contextCache = ConcurrentHashMap<String, CIFSContext>()
