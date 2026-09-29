@@ -43,18 +43,19 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
     private val contextCache = ConcurrentHashMap<String, CIFSContext>()
 
     private fun getContext(connection: SmbConnection): CIFSContext {
-        return contextCache.getOrPut(connection.id) {
-            val auth = if (connection.isGuest) {
-                NtlmPasswordAuthenticator("", "GUEST", "")
-            } else {
-                NtlmPasswordAuthenticator(
-                    connection.domain.ifEmpty { null },
-                    connection.username,
-                    connection.password
-                )
-            }
-            baseContext.withCredentials(auth)
+        // Always rebuild context to pick up credential changes
+        val auth = if (connection.isGuest) {
+            NtlmPasswordAuthenticator("", "GUEST", "")
+        } else {
+            NtlmPasswordAuthenticator(
+                connection.domain.ifEmpty { null },
+                connection.username,
+                connection.password
+            )
         }
+        val ctx = baseContext.withCredentials(auth)
+        contextCache[connection.id] = ctx
+        return ctx
     }
 
     private fun buildUri(connection: SmbConnection, path: String, isDirectory: Boolean): String {

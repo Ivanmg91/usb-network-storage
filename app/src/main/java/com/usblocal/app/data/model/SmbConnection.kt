@@ -22,7 +22,6 @@ data class SmbConnection(
     /** Validates all required fields are filled */
     fun isValid(): Boolean {
         if (host.isBlank()) return false
-        if (shareName.isBlank()) return false
         if (port !in 1..65535) return false
         if (!isGuest && username.isBlank()) return false
         return true
