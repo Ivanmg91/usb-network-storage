@@ -36,6 +36,11 @@ class SmbDataSourceImpl @Inject constructor() : SmbDataSource {
         prop.setProperty("jcifs.smb.client.disableSMB1", "false")
         prop.setProperty("jcifs.resolveOrder", "DNS")
         prop.setProperty("jcifs.smb.client.ipcSigningEnforced", "false") // Compatibility for older routers
+        // Autenticación: máxima compatibilidad con routers antiguos (LM/NTLMv1)
+        prop.setProperty("jcifs.smb.lmCompatibility", "0")
+        prop.setProperty("jcifs.smb.client.useExtendedSecurity", "false")
+        prop.setProperty("jcifs.smb.client.forceExtendedSecurity", "false")
+        prop.setProperty("jcifs.smb.client.disablePlainTextPasswords", "false")
         val config = PropertyConfiguration(prop)
         BaseContext(config)
     }
